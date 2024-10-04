@@ -1,0 +1,15 @@
+pandas
+gradio
+langchain
+faiss-cpu
+sentence-transformers
+transformers
+torch
+speechrecognition
+langchain-community
+groq
+python-dotenv
+numpy
+scikit-learn
+openai
+
