@@ -9,7 +9,6 @@ from langchain.text_splitter import CharacterTextSplitter
 from langchain.chat_models import ChatOpenAI
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
-from langchain.prompts import PromptTemplate
 
 # Load environment variables from the .env file
 load_dotenv()
@@ -52,10 +51,8 @@ def create_vector_store(file_path):
 # Create the vector store from your CSV file (assuming 'tiles_data.csv' is in the repository)
 vector_store = create_vector_store("tiles_data.csv")
 
-# Custom prompt template
-custom_prompt = PromptTemplate(
-    input_variables=["context", "question"],
-    template="""
+# Custom prompt template (if needed)
+custom_prompt = """
 You are a knowledgeable assistant for a tile store. Use the following context to answer the user's question.
 
 Context:
@@ -66,24 +63,39 @@ Question:
 
 If the answer is not in the context, try to provide a helpful response based on your knowledge.
 """
-)
 
-# Create ConversationalRetrievalChain with custom prompt
-memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+# Custom memory class to handle errors when saving context
+class CustomConversationBufferMemory(ConversationBufferMemory):
+    def save_context(self, inputs, outputs):
+        try:
+            input_str, output_str = self._get_input_output(inputs, outputs)
+            super().save_context(inputs, outputs)
+        except ValueError as e:
+            st.error(f"Memory error: {str(e)}")
+
+# Create ConversationalRetrievalChain with custom memory
+memory = CustomConversationBufferMemory(memory_key="chat_history", return_messages=True)
 qa_chain = ConversationalRetrievalChain.from_llm(
     llm=chat_model,
     retriever=vector_store.as_retriever(search_kwargs={"k": 10}),
     memory=memory,
     verbose=True,
-    combine_docs_chain_kwargs={'prompt': custom_prompt},
     return_source_documents=True
 )
 
 # Function to handle conversation with the chatbot
 def chat_bot(user_input, history):
     chain_input = {"question": user_input, "chat_history": history}
-    response = qa_chain(chain_input)
-    answer = response['answer']
+    
+    # Debugging: Show the chain input structure
+    st.write(f"Chain input: {chain_input}")
+    
+    try:
+        response = qa_chain(chain_input)
+        answer = response['answer']
+    except Exception as e:
+        st.error(f"An error occurred during processing: {str(e)}")
+        return "Sorry, something went wrong."
 
     # Provide additional options if requested
     if "more options" in user_input.lower():
@@ -98,7 +110,7 @@ def chat_bot(user_input, history):
 # Streamlit UI setup
 st.title("Tile Store Chatbot with Voice and Text Input")
 
-# Initialize session state if it doesn't exist
+# Initialize session state for chat history if not already present
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
