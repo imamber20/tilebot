@@ -12,4 +12,5 @@ python-dotenv
 numpy
 scikit-learn
 openai
+streamlit
 
