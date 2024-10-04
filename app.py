@@ -1,16 +1,14 @@
 import os
-import csv
 import streamlit as st
 from dotenv import load_dotenv
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.vectorstores import FAISS
-from langchain.document_loaders import CSVLoader
-from langchain.text_splitter import CharacterTextSplitter
-from langchain.chat_models import ChatOpenAI
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_community.document_loaders import CSVLoader
+from langchain_community.chat_models import ChatOpenAI
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 
-# Load environment variables from the .env file
+# Load environment variables
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
@@ -25,7 +23,6 @@ chat_model = ChatOpenAI(
 def preprocess_query(query):
     corrections = {
         "Graphite Black": "Granite Black",
-        # Add more corrections as needed
     }
     return corrections.get(query, query)
 
@@ -40,35 +37,20 @@ def create_vector_store(file_path):
         doc.page_content = content
         doc.metadata = {}  # Clear metadata to avoid redundancy
 
-    text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
-    texts = text_splitter.split_documents(documents)
-
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    vector_store = FAISS.from_documents(texts, embeddings)
+    vector_store = FAISS.from_documents(documents, embeddings)
 
     return vector_store
 
-# Create the vector store from your CSV file (assuming 'tiles_data.csv' is in the repository)
+# Create the vector store from your CSV file
 vector_store = create_vector_store("tiles_data.csv")
-
-# Custom prompt template (if needed)
-custom_prompt = """
-You are a knowledgeable assistant for a tile store. Use the following context to answer the user's question.
-
-Context:
-{context}
-
-Question:
-{question}
-
-If the answer is not in the context, try to provide a helpful response based on your knowledge.
-"""
 
 # Custom memory class to handle errors when saving context
 class CustomConversationBufferMemory(ConversationBufferMemory):
     def save_context(self, inputs, outputs):
         try:
-            input_str, output_str = self._get_input_output(inputs, outputs)
+            # Explicitly save only the 'answer' key
+            input_str, output_str = self._get_input_output(inputs, {"answer": outputs["answer"]})
             super().save_context(inputs, outputs)
         except ValueError as e:
             st.error(f"Memory error: {str(e)}")
@@ -87,12 +69,9 @@ qa_chain = ConversationalRetrievalChain.from_llm(
 def chat_bot(user_input, history):
     chain_input = {"question": user_input, "chat_history": history}
     
-    # Debugging: Show the chain input structure
-    st.write(f"Chain input: {chain_input}")
-    
     try:
         response = qa_chain(chain_input)
-        answer = response['answer']
+        answer = response['answer']  # Use the 'answer' key explicitly
     except Exception as e:
         st.error(f"An error occurred during processing: {str(e)}")
         return "Sorry, something went wrong."
