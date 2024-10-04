@@ -1,6 +1,6 @@
 import os
 import csv
-import gradio as gr
+import streamlit as st
 from dotenv import load_dotenv
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.vectorstores import FAISS
@@ -11,9 +11,9 @@ from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 from langchain.prompts import PromptTemplate
 
-# Load environment variables
+# Load environment variables from the .env file
 load_dotenv()
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Initialize OpenAI chat model
 chat_model = ChatOpenAI(
@@ -30,7 +30,7 @@ def preprocess_query(query):
     }
     return corrections.get(query, query)
 
-# Load and prepare data
+# Load and prepare data from the CSV file
 def create_vector_store(file_path):
     loader = CSVLoader(file_path)
     documents = loader.load()
@@ -49,7 +49,7 @@ def create_vector_store(file_path):
 
     return vector_store
 
-# Create vector store
+# Create the vector store from your CSV file (assuming 'tiles_data.csv' is in the repository)
 vector_store = create_vector_store("tiles_data.csv")
 
 # Custom prompt template
@@ -79,11 +79,7 @@ qa_chain = ConversationalRetrievalChain.from_llm(
     return_source_documents=True
 )
 
-def transcribe_audio(audio_file):
-    # Implement audio transcription using a service of your choice
-    # For now, we'll return a placeholder message
-    return "Audio transcription placeholder. Implement actual transcription here."
-
+# Function to handle conversation with the chatbot
 def chat_bot(user_input, history):
     chain_input = {"question": user_input, "chat_history": history}
     response = qa_chain(chain_input)
@@ -99,36 +95,31 @@ def chat_bot(user_input, history):
 
     return answer
 
-def process_input(input_type, text_input, audio_input, history):
-    if input_type == "text":
-        user_input = preprocess_query(text_input)
-    elif input_type == "audio" and audio_input is not None:
-        user_input = transcribe_audio(audio_input)
-        if isinstance(user_input, str) and user_input.startswith("Error:"):
-            return f"An error occurred during transcription: {user_input}", history
+# Streamlit UI setup
+st.title("Tile Store Chatbot with Voice and Text Input")
+
+# Initialize session state if it doesn't exist
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
+# Text input from the user
+user_input = st.text_input("Type your question here:")
+
+# When the user submits a query
+if st.button("Submit"):
+    if user_input:
+        processed_query = preprocess_query(user_input)
+        response = chat_bot(processed_query, st.session_state.chat_history)
+        st.session_state.chat_history.append((processed_query, response))
+
+        # Display the conversation history
+        for i, (query, resp) in enumerate(st.session_state.chat_history):
+            st.write(f"**User:** {query}")
+            st.write(f"**Assistant:** {resp}")
     else:
-        return "No valid input detected. Please try again.", history
+        st.warning("Please enter a query.")
 
-    response = chat_bot(user_input, history)
-    history.append((user_input, response))
-    return history, history
-
-with gr.Blocks() as demo:
-    gr.Markdown("# Tile Store Chatbot with Voice Input")
-    chatbot = gr.Chatbot()
-    state = gr.State([])
-
-    with gr.Row():
-        text_input = gr.Textbox(placeholder="Type your message here...")
-        audio_input = gr.Audio(type="filepath")
-    with gr.Row():
-        submit_button = gr.Button("Submit")
-
-    submit_button.click(
-        lambda text, audio, hist: process_input("text" if text else "audio", text, audio, hist),
-        inputs=[text_input, audio_input, state],
-        outputs=[chatbot, state]
-    )
-
-if __name__ == "__main__":
-    demo.launch(share=True)
+# Optionally clear chat history
+if st.button("Clear Chat History"):
+    st.session_state.chat_history = []
+    st.success("Chat history cleared.")
